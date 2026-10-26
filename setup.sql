@@ -51,7 +51,7 @@ END;
 -- 4. Function: get book price
 
 CREATE OR REPLACE FUNCTION get_book_price(
-    p_book_id NUMBER
+    p_book_id IN NUMBER
 )
 RETURN NUMBER
 IS
@@ -68,7 +68,94 @@ EXCEPTION
 END;
 /
 
--- 5. Procedure: place an order
+-- 5. Function: get total store revenue
+
+CREATE OR REPLACE FUNCTION get_total_revenue
+RETURN NUMBER
+IS
+    total_rev NUMBER;
+BEGIN
+    SELECT NVL(SUM(total), 0) INTO total_rev FROM orders;
+    RETURN total_rev;
+END;
+/
+
+-- 6. Function: get total spending by customer
+
+CREATE OR REPLACE FUNCTION get_customer_spending(
+    p_customer_id IN NUMBER
+)
+RETURN NUMBER
+IS
+    total_spent NUMBER;
+BEGIN
+    SELECT NVL(SUM(total), 0) INTO total_spent
+    FROM orders
+    WHERE customer_id = p_customer_id;
+
+    RETURN total_spent;
+END;
+/
+
+-- 7. Procedure: register a customer
+
+CREATE OR REPLACE PROCEDURE register_customer(
+    p_name IN VARCHAR2,
+    p_email IN VARCHAR2,
+    p_customer_id OUT NUMBER
+)
+IS
+BEGIN
+    INSERT INTO customers (name, email)
+    VALUES (p_name, p_email)
+    RETURNING customer_id INTO p_customer_id;
+END;
+/
+
+-- 8. Procedure: add a new book
+
+CREATE OR REPLACE PROCEDURE add_book(
+    p_title IN VARCHAR2,
+    p_author IN VARCHAR2,
+    p_price IN NUMBER,
+    p_stock IN NUMBER
+)
+IS
+BEGIN
+    IF p_price <= 0 OR p_stock < 0 THEN
+        RAISE_APPLICATION_ERROR(-20004,
+            'Price must be positive and stock cannot be negative');
+    END IF;
+
+    INSERT INTO books (title, author, price, stock)
+    VALUES (p_title, p_author, p_price, p_stock);
+END;
+/
+
+-- 9. Procedure: restock an existing book
+
+CREATE OR REPLACE PROCEDURE restock_book(
+    p_book_id IN NUMBER,
+    p_quantity IN NUMBER
+)
+IS
+BEGIN
+    IF p_quantity <= 0 THEN
+        RAISE_APPLICATION_ERROR(-20005,
+            'Restock quantity must be greater than zero');
+    END IF;
+
+    UPDATE books
+    SET stock = stock + p_quantity
+    WHERE book_id = p_book_id;
+
+    IF SQL%ROWCOUNT = 0 THEN
+        RAISE_APPLICATION_ERROR(-20003, 'Book not found');
+    END IF;
+END;
+/
+
+-- 10. Procedure: place an order
 
 CREATE OR REPLACE PROCEDURE place_order(
     p_customer_id IN NUMBER,

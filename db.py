@@ -11,6 +11,8 @@ def connect():
         dsn = os.getenv("ORACLE_DSN")
     )
 
+# --- Functions ---
+
 def count_books():
     with connect() as conn:
         with conn.cursor() as cur:
@@ -21,9 +23,25 @@ def get_book_price(book_id):
         with conn.cursor() as cur:
             return cur.callfunc(
                 "get_book_price",
-                oracledb.DB_TYPE_NUMBER,
+                float,
                 [book_id]
             )
+
+def get_total_revenue():
+    with connect() as conn:
+        with conn.cursor() as cur:
+            return cur.callfunc("get_total_revenue", float)
+
+def get_customer_spending(customer_id):
+    with connect() as conn:
+        with conn.cursor() as cur:
+            return cur.callfunc(
+                "get_customer_spending",
+                float,
+                [customer_id]
+            )
+
+# --- Queries ---
 
 def get_books():
     with connect() as conn:
@@ -34,29 +52,63 @@ def get_books():
             )
             return cur.fetchall()
 
+def get_customers():
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT customer_id, name, email "
+                "FROM customers ORDER BY customer_id"
+            )
+            return cur.fetchall()
+
+def get_orders():
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT o.order_id, c.name, b.title, o.quantity, o.total, o.order_date
+                FROM orders o
+                JOIN customers c ON o.customer_id = c.customer_id
+                JOIN books b ON o.book_id = b.book_id
+                ORDER BY o.order_date DESC, o.order_id DESC
+                """
+            )
+            return cur.fetchall()
+
+# --- Procedures ---
+
 def add_customer(name, email):
     with connect() as conn:
         with conn.cursor() as cur:
             customer_id = cur.var(int)
-
-            cur.execute(
-                """
-                INSERT INTO customers (name, email)
-                VALUES (:name, :email)
-                RETURNING customer_id INTO :customer_id
-                """,
-                name = name,
-                email =email,
-                customer_id = customer_id
+            cur.callproc(
+                "register_customer",
+                [name, email, customer_id]
             )
-
-            new_id = customer_id.getvalue()
             conn.commit()
 
+            new_id = customer_id.getvalue()
             if isinstance(new_id, list):
                 new_id = new_id[0]
-
             return int(new_id)
+
+def add_book(title, author, price, stock):
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.callproc(
+                "add_book",
+                [title, author, price, stock]
+            )
+        conn.commit()
+
+def restock_book(book_id, quantity):
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.callproc(
+                "restock_book",
+                [book_id, quantity]
+            )
+        conn.commit()
 
 def place_order(customer_id, book_id, quantity):
     with connect() as conn:
@@ -66,9 +118,7 @@ def place_order(customer_id, book_id, quantity):
                     "place_order",
                     [customer_id, book_id, quantity]
                 )
-
             conn.commit()
-
         except Exception:
             conn.rollback()
             raise
